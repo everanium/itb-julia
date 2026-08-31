@@ -1,6 +1,6 @@
 name = "ITB"
 uuid = "f186ed08-a8a6-4304-bb80-ea7cbba0a5e7"
-version = "0.3.0"
+version = "0.3.1"
 
 [deps]
 Libdl = "8f399da3-3557-5675-b5ff-fb832c97cbdb"

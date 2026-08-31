@@ -51,6 +51,21 @@ with_parallax_segment_size!(o::Opts, n::Integer) =
     with_raw!(o, "parallaxSegmentSize", string(n))
 with_mac_name!(o::Opts, name::AbstractString) = with_raw!(o, "macName", name)
 with_inner_hash!(o::Opts, name::AbstractString) = with_raw!(o, "innerHash", name)
+
+"""
+    with_inner_hashes!(o::Opts, names) -> Opts
+
+Per-call override for `Opts.MixedHashes [8]string` on the Go side.
+Comma-joins the 8 slot names into the `innerHashes` opts-string key.
+Slot ordering is `[noise, lock, data1, data2, data3, start1, start2, start3]`.
+Fail-fast validation surfaces at Init on the Go side; a typo'd slot
+or width mismatch surfaces with an error naming the offending slot.
+When both this and `with_inner_hash!` are set, the mixed override
+wins on the Go side.
+"""
+with_inner_hashes!(o::Opts, names) =
+    with_raw!(o, "innerHashes", join(names, ","))
+
 with_outer_cipher!(o::Opts, name::AbstractString) = with_raw!(o, "outerCipher", name)
 
 "Comma-joins the palette names (`parallaxPalette`)."

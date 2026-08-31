@@ -267,6 +267,25 @@ end
         @test build(o) == "keyBits=1024&withParallax=false&innerHash=areion512"
     end
 
+    @testset "opts innerHashes override round trips on width-512 profile" begin
+        # Per-call Opts.MixedHashes override over a width-512 shipped
+        # base profile; both sides pass the same 8-slot constellation
+        # so the receiver Pipeline resolves the same mixed inner-hash
+        # bundle as the sender.
+        mix = Opts()
+        with_inner_hashes!(mix, [
+            "areion512", "blake2b512", "areion512", "blake2b512",
+            "areion512", "blake2b512", "areion512", "blake2b512",
+        ])
+        sender = Pipeline("singlemsg-triple-mac-v1"; opts=mix)
+        receiver = Pipeline("singlemsg-triple-mac-v1"; blob=blob(sender), opts=mix)
+        plain = payload(4096, 42)
+        wire = encrypt_message(sender, plain)
+        @test decrypt_message(receiver, wire) == plain
+        free!(sender)
+        free!(receiver)
+    end
+
     @testset "runtime knobs report previous values" begin
         @test set_memory_limit(-1) isa Int
         @test set_gc_percent(-1) isa Int

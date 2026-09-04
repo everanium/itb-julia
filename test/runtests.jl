@@ -4,11 +4,6 @@
 using Test
 using ITB
 
-const CANONICAL_HASHES = [
-    "areion256", "areion512", "blake2b256", "blake2b512", "blake2s",
-    "blake3", "aescmac", "siphash24", "chacha20",
-]
-
 # Deterministic non-trivial payload (xorshift fill).
 function payload(n::Int, seed::Integer)::Vector{UInt8}
     x = UInt64(seed) | 0x01
@@ -41,27 +36,26 @@ end
         @test occursin(r"^\d+\.\d+", v)
     end
 
-    @testset "hashes canonical order" begin
-        hs = hashes()
-        @test [h.name for h in hs] == CANONICAL_HASHES
-        @test all(h -> h.width >= 128, hs)
-    end
-
     @testset "profiles list" begin
         ps = profiles()
         @test "singlemsg-triple-mac-v1" in ps
         @test "streaming-noaead-triple-v1" in ps
-        # Every listed profile initialises on the Go side.
+        @test ps == sort(ps)
+        # Every listed profile initialises on the Go side and resolves
+        # through lookup.
         for p in ps
             pipe = Pipeline(p)
-            @test !isempty(blob(pipe))
+            @test !isempty(save(pipe))
+            @test occursin("\"name\":\"$p\"", lookup(p))
             free!(pipe)
         end
+        err = capture_itberror(() -> lookup("no-such-profile"))
+        @test err.status_code == ITB.STATUS_UNKNOWN_PROFILE
     end
 
     @testset "message round trip" begin
         sender = Pipeline("singlemsg-triple-mac-v1")
-        receiver = Pipeline("singlemsg-triple-mac-v1"; blob=blob(sender))
+        receiver = load(save(sender))
         for size in (4 * 1024, 256 * 1024)
             plain = payload(size, size)
             wire = encrypt_message(sender, plain)
@@ -75,7 +69,7 @@ end
 
     @testset "stream round trip" begin
         sender = Pipeline("streaming-noaead-triple-v1")
-        receiver = Pipeline("streaming-noaead-triple-v1"; blob=blob(sender))
+        receiver = load(save(sender))
         plain = payload(3 * 1024 * 1024 + 17, 42)
 
         wire = encrypt_stream(sender) do enc
@@ -100,7 +94,7 @@ end
 
     @testset "stream pump round trip" begin
         sender = Pipeline("streaming-aead-triple-mac-v1")
-        receiver = Pipeline("streaming-aead-triple-mac-v1"; blob=blob(sender))
+        receiver = load(save(sender))
         plain = payload(2 * 1024 * 1024 + 3, 7)
 
         wire_io = IOBuffer()
@@ -118,7 +112,7 @@ end
 
     @testset "read_into! partial drains" begin
         sender = Pipeline("streaming-noaead-triple-v1")
-        receiver = Pipeline("streaming-noaead-triple-v1"; blob=blob(sender))
+        receiver = load(save(sender))
         plain = payload(1024 * 1024 + 13, 21)
 
         wire = UInt8[]
@@ -179,15 +173,15 @@ end
         free!(sender)
     end
 
-    @testset "bad profile maps to BAD_INPUT" begin
+    @testset "bad profile maps to UNKNOWN_PROFILE" begin
         err = capture_itberror(() -> Pipeline("no-such-profile"))
-        @test err.status_code == ITB.STATUS_BAD_INPUT
+        @test err.status_code == ITB.STATUS_UNKNOWN_PROFILE
         @test !isempty(sprint(showerror, err))
     end
 
     @testset "tampered wire fails decrypt" begin
         sender = Pipeline("singlemsg-triple-mac-v1")
-        receiver = Pipeline("singlemsg-triple-mac-v1"; blob=blob(sender))
+        receiver = load(save(sender))
         wire = encrypt_message(sender, payload(8 * 1024, 3))
         # XOR a 64-byte span so the corruption is guaranteed to hit
         # data bits (a single flipped bit can land in a noise-bit
@@ -216,7 +210,7 @@ end
         # retry gated on strict len > cap must cover a > 1 MiB
         # payload.
         sender = Pipeline("singlemsg-triple-nomac-v1")
-        receiver = Pipeline("singlemsg-triple-nomac-v1"; blob=blob(sender))
+        receiver = load(save(sender))
         plain = payload((1 << 20) + 4321, 9)
         wire = encrypt_message(sender, plain)
         back = decrypt_message(receiver, wire)
@@ -227,36 +221,114 @@ end
 
     @testset "rekey refreshes blob" begin
         sender = Pipeline("singlemsg-triple-mac-v1")
-        old_blob = copy(blob(sender))
-        rekey!(sender, fill(0x01, 32), fill(0x02, 32))
-        @test blob(sender) != old_blob
-        receiver = Pipeline("singlemsg-triple-mac-v1"; blob=blob(sender))
+        old_blob = save(sender)
+        rotated = rekey!(sender, fill(0x01, 32), fill(0x02, 32))
+        @test rotated != old_blob
+        @test save(sender) == rotated
+        receiver = load(rotated)
         wire = encrypt_message(sender, Vector{UInt8}("after rekey"))
         @test decrypt_message(receiver, wire) == Vector{UInt8}("after rekey")
         free!(sender)
         free!(receiver)
     end
 
-    @testset "register profile and duplicate" begin
+    @testset "register and duplicate" begin
         name = "julia-binding-test-$(getpid())"
-        opts = Opts()
-        with_raw!(opts, "mode", "singlemsg-nomac")
-        with_raw!(opts, "width", "256")
-        with_raw!(opts, "innerHashes",
-                  "blake3,blake2s,areion256,blake2b256,chacha20,blake3,blake2s,areion256")
-        with_raw!(opts, "keyBits", "1024")
-        with_raw!(opts, "parallaxOn", "false")
-        with_raw!(opts, "wrapperOn", "false")
-        register_profile(name, opts)
+        profile = """{
+            "mode": "singlemsg-nomac",
+            "width": 256,
+            "hashes": ["blake3", "blake2s", "areion256", "blake2b256",
+                       "chacha20", "blake3", "blake2s", "areion256"],
+            "keybits": 1024,
+            "parallax": false,
+            "wrapper": false
+        }"""
+        register(name, profile)
+        @test name in profiles()
+        @test occursin("\"hashes\":[\"blake3\"", lookup(name))
         sender = Pipeline(name)
-        receiver = Pipeline(name; blob=blob(sender))
+        receiver = load(save(sender))
         wire = encrypt_message(sender, Vector{UInt8}("custom profile"))
         @test decrypt_message(receiver, wire) == Vector{UInt8}("custom profile")
 
-        err = capture_itberror(() -> register_profile(name, opts))
+        err = capture_itberror(() -> register(name, profile))
         @test err.status_code == ITB.STATUS_PROFILE_EXISTS
+        # Strict record decode on the Go side: an unknown key is
+        # rejected there, not by the binding.
+        err = capture_itberror(() -> register("$name-bad", "{\"mode\":\"singlemsg-nomac\",\"bogus\":1}"))
+        @test err.status_code == ITB.STATUS_BAD_INPUT
         free!(sender)
         free!(receiver)
+    end
+
+    @testset "save / load round trip" begin
+        sender = Pipeline("singlemsg-triple-mac-v1")
+        blob = save(sender)
+        @test !isempty(blob)
+        @test save(sender) == blob
+        receiver = load(blob)
+        @test save(receiver) == blob
+        wire = encrypt_message(sender, Vector{UInt8}("in-memory persist"))
+        @test decrypt_message(receiver, wire) == Vector{UInt8}("in-memory persist")
+        free!(sender)
+        free!(receiver)
+    end
+
+    @testset "save_f / load_f round trip" begin
+        mktempdir() do dir
+            path = joinpath(dir, "session.blob")
+            sender = Pipeline("singlemsg-triple-mac-v1")
+            save_f(sender, path)
+            @test filemode(path) & 0o777 == 0o600
+            receiver = load_f(path)
+            @test save(receiver) == save(sender)
+            wire = encrypt_message(sender, Vector{UInt8}("file persist"))
+            @test decrypt_message(receiver, wire) == Vector{UInt8}("file persist")
+            err = capture_itberror(() -> load_f(joinpath(dir, "absent.blob")))
+            @test err.status_code == ITB.STATUS_BAD_INPUT
+            free!(sender)
+            free!(receiver)
+        end
+    end
+
+    @testset "load with master override" begin
+        sender = Pipeline("singlemsg-triple-mac-v1")
+        rotated = rekey!(sender, fill(0x31, 32), fill(0x32, 32))
+        receiver = load(save(sender); masters=(fill(0x31, 32), fill(0x32, 32)))
+        @test save(receiver) == rotated
+        wire = encrypt_message(sender, Vector{UInt8}("master override"))
+        @test decrypt_message(receiver, wire) == Vector{UInt8}("master override")
+        free!(sender)
+        free!(receiver)
+    end
+
+    @testset "inspect matches lookup" begin
+        pipe = Pipeline("singlemsg-triple-mac-v1")
+        record = inspect(save(pipe))
+        @test occursin("\"name\":\"singlemsg-triple-mac-v1\"", record)
+        @test occursin("\"mode\":\"singlemsg-mac\"", record)
+        @test record == lookup("singlemsg-triple-mac-v1")
+        err = capture_itberror(() -> inspect(Vector{UInt8}("not a blob")))
+        @test err.status_code == ITB.STATUS_BAD_INPUT
+        free!(pipe)
+    end
+
+    @testset "max_workers!" begin
+        pipe = Pipeline("singlemsg-triple-mac-v1")
+        max_workers!(pipe, 2)
+        max_workers!(pipe, -1)     # clamped to auto, never rejected
+        max_workers!(pipe, 10_000) # clamped to 256
+        wire = encrypt_message(pipe, Vector{UInt8}("after cap change"))
+        @test decrypt_message(pipe, wire) == Vector{UInt8}("after cap change")
+        close!(pipe)
+        err = capture_itberror(() -> max_workers!(pipe, 2))
+        @test err.status_code == ITB.STATUS_TRIPLE_CLOSED
+        free!(pipe)
+        # A negative init-time cap is clamped as well.
+        neg = Pipeline("singlemsg-triple-mac-v1"; opts=with_max_workers!(Opts(), -1))
+        @test decrypt_message(neg, encrypt_message(neg, Vector{UInt8}("negative cap"))) ==
+              Vector{UInt8}("negative cap")
+        free!(neg)
     end
 
     @testset "opts builder renders query pairs" begin
@@ -269,16 +341,16 @@ end
 
     @testset "opts innerHashes override round trips on width-512 profile" begin
         # Per-call Opts.MixedHashes override over a width-512 shipped
-        # base profile; both sides pass the same 8-slot constellation
-        # so the receiver Pipeline resolves the same mixed inner-hash
-        # bundle as the sender.
+        # base profile; the override lands in the blob's profile
+        # record, so the receiver loads with no opts of its own.
         mix = Opts()
         with_inner_hashes!(mix, [
             "areion512", "blake2b512", "areion512", "blake2b512",
             "areion512", "blake2b512", "areion512", "blake2b512",
         ])
         sender = Pipeline("singlemsg-triple-mac-v1"; opts=mix)
-        receiver = Pipeline("singlemsg-triple-mac-v1"; blob=blob(sender), opts=mix)
+        @test occursin("\"hashes\":[\"areion512\",\"blake2b512\"", inspect(save(sender)))
+        receiver = load(save(sender))
         plain = payload(4096, 42)
         wire = encrypt_message(sender, plain)
         @test decrypt_message(receiver, wire) == plain

@@ -13,8 +13,8 @@
 #    `DYLD_LIBRARY_PATH`, `PATH`).
 #
 # A resolve failure surfaces as `ITBError` at the first FFI call
-# rather than a load-time crash. Every prototype below mirrors
-# cmd/cshared/libitb.h. `uintptr_t` handles cross as `Csize_t` (same
+# rather than a load-time crash. Every prototype below mirrors the
+# ITB_Triple_* exports of cmd/cshared. `uintptr_t` handles cross as `Csize_t` (same
 # width on every supported platform); input buffers cross as
 # `Vector{UInt8}` borrowed for the duration of the call (`ccall`
 # GC-roots its arguments); output buffers are freshly-allocated
@@ -87,14 +87,6 @@ _ITB_SetMemoryLimit(limit) =
 _ITB_SetGCPercent(pct) =
     ccall(_sym(:ITB_SetGCPercent), Cint, (Cint,), pct)
 
-_ITB_HashCount() = ccall(_sym(:ITB_HashCount), Cint, ())
-
-_ITB_HashName(i, buf, cap, need) =
-    ccall(_sym(:ITB_HashName), Cint, (Cint, Ptr{UInt8}, Csize_t, Ptr{Csize_t}),
-          i, buf, cap, need)
-
-_ITB_HashWidth(i) = ccall(_sym(:ITB_HashWidth), Cint, (Cint,), i)
-
 # --- Triple Pipeline -----------------------------------------------------
 
 _ITB_Triple_Init(profile, opts, blob_out, blob_cap, blob_len, out_handle) =
@@ -102,11 +94,32 @@ _ITB_Triple_Init(profile, opts, blob_out, blob_cap, blob_len, out_handle) =
           (Cstring, Cstring, Ptr{UInt8}, Csize_t, Ptr{Csize_t}, Ptr{Csize_t}),
           profile, opts, blob_out, blob_cap, blob_len, out_handle)
 
-_ITB_Triple_Open(profile, blob, blob_len, opts, pm, pm_len, wm, wm_len, count, out_handle) =
-    ccall(_sym(:ITB_Triple_Open), Cint,
-          (Cstring, Ptr{UInt8}, Csize_t, Cstring, Ptr{UInt8}, Csize_t,
+_ITB_Triple_Load(blob, blob_len, pm, pm_len, wm, wm_len, count, out_handle) =
+    ccall(_sym(:ITB_Triple_Load), Cint,
+          (Ptr{UInt8}, Csize_t, Ptr{UInt8}, Csize_t,
            Ptr{UInt8}, Csize_t, Csize_t, Ptr{Csize_t}),
-          profile, blob, blob_len, opts, pm, pm_len, wm, wm_len, count, out_handle)
+          blob, blob_len, pm, pm_len, wm, wm_len, count, out_handle)
+
+_ITB_Triple_LoadF(path, pm, pm_len, wm, wm_len, count, out_handle) =
+    ccall(_sym(:ITB_Triple_LoadF), Cint,
+          (Cstring, Ptr{UInt8}, Csize_t, Ptr{UInt8}, Csize_t, Csize_t, Ptr{Csize_t}),
+          path, pm, pm_len, wm, wm_len, count, out_handle)
+
+_ITB_Triple_Save(h, blob_out, blob_cap, blob_len) =
+    ccall(_sym(:ITB_Triple_Save), Cint,
+          (Csize_t, Ptr{UInt8}, Csize_t, Ptr{Csize_t}),
+          h, blob_out, blob_cap, blob_len)
+
+_ITB_Triple_SaveF(h, path) =
+    ccall(_sym(:ITB_Triple_SaveF), Cint, (Csize_t, Cstring), h, path)
+
+_ITB_Triple_Inspect(blob, blob_len, json_out, json_cap, json_len) =
+    ccall(_sym(:ITB_Triple_Inspect), Cint,
+          (Ptr{UInt8}, Csize_t, Ptr{UInt8}, Csize_t, Ptr{Csize_t}),
+          blob, blob_len, json_out, json_cap, json_len)
+
+_ITB_Triple_MaxWorkers(h, n) =
+    ccall(_sym(:ITB_Triple_MaxWorkers), Cint, (Csize_t, Cint), h, n)
 
 _ITB_Triple_Rekey(h, pm, pm_len, wm, wm_len, blob_out, blob_cap, blob_len) =
     ccall(_sym(:ITB_Triple_Rekey), Cint,
@@ -130,8 +143,18 @@ for (jl, c) in (
               h, src, src_len, out, out_cap, out_len)
 end
 
-_ITB_Triple_RegisterProfile(name, opts) =
-    ccall(_sym(:ITB_Triple_RegisterProfile), Cint, (Cstring, Cstring), name, opts)
+_ITB_Triple_Register(name, profile_json) =
+    ccall(_sym(:ITB_Triple_Register), Cint, (Cstring, Cstring), name, profile_json)
+
+_ITB_Triple_Lookup(name, json_out, json_cap, json_len) =
+    ccall(_sym(:ITB_Triple_Lookup), Cint,
+          (Cstring, Ptr{UInt8}, Csize_t, Ptr{Csize_t}),
+          name, json_out, json_cap, json_len)
+
+_ITB_Triple_Profiles(json_out, json_cap, json_len) =
+    ccall(_sym(:ITB_Triple_Profiles), Cint,
+          (Ptr{UInt8}, Csize_t, Ptr{Csize_t}),
+          json_out, json_cap, json_len)
 
 # --- incremental stream sessions ----------------------------------------
 

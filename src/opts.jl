@@ -9,10 +9,11 @@
 """
     Opts()
 
-Builder producing the URL-query-encoded opts string consumed by
-[`Pipeline`](@ref) and [`register_profile`](@ref). Every `with_*!`
-setter returns the builder for fluent chaining; [`build`](@ref)
-renders the accumulated pairs.
+Builder producing the URL-query-encoded opts string consumed by the
+[`Pipeline`](@ref) constructor. Every `with_*!` setter returns the
+builder for fluent chaining; [`build`](@ref) renders the accumulated
+pairs. (Profile registration takes a JSON record — see
+[`register`](@ref) — not an `Opts`.)
 """
 struct Opts
     pairs::Vector{Pair{String,String}}
@@ -24,8 +25,7 @@ Opts() = Opts(Pair{String,String}[])
     with_raw!(o::Opts, key, value) -> Opts
 
 Escape hatch appending a raw `key=value` pair. Covers every key the
-Go side accepts, including the register-profile grammar (`mode`,
-`width`, `innerHashes`, `parallaxOn`, `wrapperOn`, …).
+Go side accepts.
 """
 function with_raw!(o::Opts, key::AbstractString, value::AbstractString)
     push!(o.pairs, String(key) => String(value))

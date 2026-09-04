@@ -1,7 +1,12 @@
-# Handle-lifetime wrapper around the Triple Pipeline surface.
+# Handle-lifetime wrapper around the Triple Pipeline surface plus the
+# profile-catalogue entries (inspect / register / lookup / profiles).
 
-# Floor capacity for blob output buffers (Init / Rekey).
+# Floor capacity for blob output buffers (Init / Save / Rekey).
 const _BLOB_CAP = 64 * 1024
+
+# Floor capacity for profile-JSON output buffers (Inspect / Lookup /
+# Profiles).
+const _JSON_CAP = 4 * 1024
 
 # Pre-allocation formula for Message / one-shot stream outputs:
 # payload * 5/4 + 65536.
@@ -29,24 +34,26 @@ function _retry_once(f::Function, cap::Int)::Vector{UInt8}
     return buf
 end
 
+# Folds the optional `(perm, wrap)` master pair into the
+# (perm_master, wrap_master, masters_count) triple the Load entries
+# take: count 0 selects the blob-embedded masters, count 2 overrides
+# them.
+function _masters(masters)
+    masters === nothing && return (UInt8[], UInt8[], 0)
+    return (_as_bytes(masters[1]), _as_bytes(masters[2]), 2)
+end
+
 """
-    Pipeline(profile; opts=nothing, blob=nothing, masters=nothing)
+    Pipeline(profile; opts=nothing)
 
-A Triple Pipeline session plus its exported blob bytes.
-
-With `blob === nothing` a fresh session is initialised
-(`ITB_Triple_Init`); with `blob` given the session is reconstructed
-from a bundle produced by a prior init or [`rekey!`](@ref)
-(`ITB_Triple_Open`). `opts` is `nothing`, an opts string, an
+A Triple Pipeline session constructed against the named profile
+(`ITB_Triple_Init`). `opts` is `nothing`, an opts string, an
 [`Opts`](@ref) builder, or a `Dict` rendered to the URL-query grammar
-libitb validates; `masters` is `nothing` to use the blob-embedded
-masters or a `(perm, wrap)` pair of byte vectors to override them
-(open path only).
-
-The blob carries the session bundle the receiver feeds back through
-the `blob` keyword; [`rekey!`](@ref) refreshes it. [`close!`](@ref)
-zeroes key material inside libitb; [`free!`](@ref) releases the
-Go-side handle (a GC finalizer covers the non-explicit path).
+libitb validates. The session blob is available through
+[`save`](@ref); [`load`](@ref) / [`load_f`](@ref) reopen a session
+from it and [`rekey!`](@ref) refreshes it. [`close!`](@ref) zeroes
+key material inside libitb; [`free!`](@ref) releases the Go-side
+handle (a GC finalizer covers the non-explicit path).
 
 Streaming-decrypt caveat: chunked Streaming AEAD verifies per chunk,
 so plaintext of verified chunks is released before a later chunk can
@@ -54,62 +61,111 @@ fail authentication.
 """
 mutable struct Pipeline
     handle::Csize_t
-    blob::Vector{UInt8}
 
-    function Pipeline(profile::AbstractString;
-                      opts=nothing, blob=nothing, masters=nothing)
-        opts_s = render_opts(opts)
-        href = Ref{Csize_t}(0)
-        local blob_out::Vector{UInt8}
-        if blob === nothing
-            # On a blob-buffer retry the Init re-runs and yields a
-            # fresh session (the undersized attempt is closed by
-            # libitb before returning).
-            blob_out = _retry_once(_BLOB_CAP) do buf, need
-                _ITB_Triple_Init(profile, opts_s, buf, length(buf), need, href)
-            end
-        else
-            blob_b = _as_bytes(blob)
-            if masters === nothing
-                pm, wm, count = UInt8[], UInt8[], 0
-            else
-                pm = _as_bytes(masters[1])
-                wm = _as_bytes(masters[2])
-                (isempty(pm) || isempty(wm)) &&
-                    throw(ITBError("master override buffers must be non-empty"))
-                count = 2
-            end
-            check(_ITB_Triple_Open(profile, blob_b, length(blob_b), opts_s,
-                                   pm, length(pm), wm, length(wm), count, href))
-            blob_out = blob_b
-        end
-        p = new(href[], blob_out)
+    # Wraps an already-open libitb handle; not part of the public
+    # API — use the profile constructor, `load`, or `load_f`.
+    function Pipeline(handle::Csize_t)
+        p = new(handle)
         finalizer(free!, p)
         return p
     end
 end
 
-"""
-    blob(p::Pipeline) -> Vector{UInt8}
+function Pipeline(profile::AbstractString; opts=nothing)
+    opts_s = render_opts(opts)
+    href = Ref{Csize_t}(0)
+    # On a blob-buffer retry the Init re-runs and yields a fresh
+    # session (the undersized attempt is closed by libitb before
+    # returning). The Init-time blob copy is dropped; `save` re-reads
+    # it from the handle.
+    _retry_once(_BLOB_CAP) do buf, need
+        _ITB_Triple_Init(profile, opts_s, buf, length(buf), need, href)
+    end
+    return Pipeline(href[])
+end
 
-The exported session bundle bytes for the receiver side.
 """
-blob(p::Pipeline) = p.blob
+    load(blob; masters=nothing) -> Pipeline
+
+Reconstructs a Pipeline from a blob produced by [`save`](@ref) or
+[`rekey!`](@ref) (`ITB_Triple_Load`). The blob's embedded profile
+record is the sole structural source — no profile name, no opts.
+`masters` is `nothing` to use the blob-embedded masters or a
+`(perm, wrap)` pair of byte vectors to override them.
+"""
+function load(blob; masters=nothing)::Pipeline
+    blob_b = _as_bytes(blob)
+    pm, wm, count = _masters(masters)
+    href = Ref{Csize_t}(0)
+    check(_ITB_Triple_Load(blob_b, length(blob_b), pm, length(pm), wm, length(wm),
+                           count, href))
+    return Pipeline(href[])
+end
 
 """
-    rekey!(p::Pipeline, perm, wrap)
+    load_f(path; masters=nothing) -> Pipeline
 
-Rotates the parallax + wrapper masters and refreshes [`blob`](@ref).
-Must not run concurrently with cipher calls or open stream sessions
-on the same Pipeline.
+[`load`](@ref) for a blob stored in a file (`ITB_Triple_LoadF`); the
+file is read inside the library.
 """
-function rekey!(p::Pipeline, perm, wrap)
+function load_f(path::AbstractString; masters=nothing)::Pipeline
+    pm, wm, count = _masters(masters)
+    href = Ref{Csize_t}(0)
+    check(_ITB_Triple_LoadF(path, pm, length(pm), wm, length(wm), count, href))
+    return Pipeline(href[])
+end
+
+"""
+    save(p::Pipeline) -> Vector{UInt8}
+
+The current serialised session blob — the bytes the constructor
+produced, the bytes `load` re-marshalled, or the bytes of the latest
+[`rekey!`](@ref).
+"""
+function save(p::Pipeline)::Vector{UInt8}
+    return _retry_once(_BLOB_CAP) do buf, need
+        _ITB_Triple_Save(p.handle, buf, length(buf), need)
+    end
+end
+
+"""
+    save_f(p::Pipeline, path)
+
+Writes the current session blob to `path` inside the library (mode
+`0600`; the containing directory must exist).
+"""
+function save_f(p::Pipeline, path::AbstractString)
+    check(_ITB_Triple_SaveF(p.handle, path))
+    return nothing
+end
+
+"""
+    rekey!(p::Pipeline, perm, wrap) -> Vector{UInt8}
+
+Rotates the parallax + wrapper masters and returns the refreshed
+session blob (also observable through [`save`](@ref)). Must not run
+concurrently with cipher calls or open stream sessions on the same
+Pipeline.
+"""
+function rekey!(p::Pipeline, perm, wrap)::Vector{UInt8}
     pm = _as_bytes(perm)
     wm = _as_bytes(wrap)
-    p.blob = _retry_once(max(_BLOB_CAP, length(p.blob))) do buf, need
+    return _retry_once(_BLOB_CAP) do buf, need
         _ITB_Triple_Rekey(p.handle, pm, length(pm), wm, length(wm),
                           buf, length(buf), need)
     end
+end
+
+"""
+    max_workers!(p::Pipeline, n::Integer)
+
+Sets the worker cap for every subsequent cipher call. `n` is clamped,
+never rejected: `n <= 0` selects auto (`runtime.NumCPU`), `1..256`
+pins the cap, larger values are treated as 256. The cap is
+per-machine tuning and is never written to the blob.
+"""
+function max_workers!(p::Pipeline, n::Integer)
+    check(_ITB_Triple_MaxWorkers(p.handle, n))
     return nothing
 end
 
@@ -173,21 +229,71 @@ function free!(p::Pipeline)
     return nothing
 end
 
-# The blob bytes are elided — session-bundle material does not belong
-# in debug logs.
-Base.show(io::IO, p::Pipeline) = print(io, "Pipeline(blob_len=", length(p.blob), ")")
+Base.show(io::IO, p::Pipeline) =
+    print(io, "Pipeline(", p.handle == 0 ? "freed" : "open", ")")
+
+# --- profile catalogue ---------------------------------------------------
+
+# Shared body for the JSON-returning catalogue entries: retry-once
+# buffer, returned as the JSON text libitb wrote.
+_json_out(f::Function)::String = String(_retry_once(f, _JSON_CAP))
 
 """
-    register_profile(name, opts)
+    inspect(blob) -> String
 
-Registers a user-defined Triple profile under `name` so subsequent
-[`Pipeline`](@ref) constructions resolve it. `opts` follows the
-register-profile grammar validated by Go (`mode`, `width`,
-`innerHash` / `innerHashes`, `keyBits`, `macName`, `outerCipher`,
-`parallaxPalette`, `parallaxSegmentSize`, `chunkSize`, `parallaxOn`,
-`wrapperOn`). A duplicate name fails with `STATUS_PROFILE_EXISTS`.
+Decodes the blob's embedded profile record without opening a Pipeline
+and returns it as the JSON text libitb emits (keys `name`, `mode`,
+`width`, `hash`, `hashes`, `keybits`, `mac`, `tagstub`, `chunk`,
+`wrapper`, `outer`, `parallax`, `palette`, `segment`; absent keys are
+optional fields at their zero value). No registry read, no primitive
+probe — a primitive name the local build lacks is returned unchanged.
 """
-function register_profile(name::AbstractString, opts)
-    check(_ITB_Triple_RegisterProfile(name, render_opts(opts)))
+function inspect(blob)::String
+    blob_b = _as_bytes(blob)
+    return _json_out() do buf, need
+        _ITB_Triple_Inspect(blob_b, length(blob_b), buf, length(buf), need)
+    end
+end
+
+"""
+    register(name, profile_json)
+
+Registers a profile record under `name` so subsequent
+[`Pipeline`](@ref) constructions and [`lookup`](@ref) calls resolve
+it. `profile_json` is the record as JSON text — the shape
+[`inspect`](@ref) / [`lookup`](@ref) return; a `name` key inside it,
+if present, must be empty or equal to `name`. Validation (name
+pattern, reserved prefixes, field rules) is performed by libitb; a
+duplicate name fails with `STATUS_PROFILE_EXISTS`.
+"""
+function register(name::AbstractString, profile_json::AbstractString)
+    check(_ITB_Triple_Register(name, profile_json))
     return nothing
+end
+
+"""
+    lookup(name) -> String
+
+Returns the profile record registered under `name` (a shipped
+catalogue entry or a prior [`register`](@ref)) as JSON text. An
+unknown name throws [`ITBError`](@ref) with `STATUS_UNKNOWN_PROFILE`.
+"""
+function lookup(name::AbstractString)::String
+    return _json_out() do buf, need
+        _ITB_Triple_Lookup(name, buf, length(buf), need)
+    end
+end
+
+"""
+    profiles() -> Vector{String}
+
+The sorted list of every registered profile name. libitb writes a
+JSON array of strings; profile names are restricted to `[a-z0-9-]`,
+so the array unpacks by collecting the quoted items.
+"""
+function profiles()::Vector{String}
+    text = _json_out() do buf, need
+        _ITB_Triple_Profiles(buf, length(buf), need)
+    end
+    return [String(m.captures[1]) for m in eachmatch(r"\"([^\"]*)\"", text)]
 end

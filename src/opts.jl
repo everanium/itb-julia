@@ -67,6 +67,7 @@ with_inner_hashes!(o::Opts, names) =
     with_raw!(o, "innerHashes", join(names, ","))
 
 with_outer_cipher!(o::Opts, name::AbstractString) = with_raw!(o, "outerCipher", name)
+with_drbg!(o::Opts, name::AbstractString) = with_raw!(o, "drbg", name)
 
 "Comma-joins the palette names (`parallaxPalette`)."
 with_parallax_palette!(o::Opts, names) =

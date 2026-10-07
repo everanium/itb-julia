@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
-# run_tests.sh -- one-step test runner for the Julia binding. Builds
-# libitb3.so via build.sh, points ITB_LIBITB3_PATH at the freshly-built
-# shared library, then runs the Test-stdlib suite.
+# One-step test runner for the Julia binding. Builds libitb3.so via
+# build.sh, points ITB_LIBITB3_PATH at the freshly-built shared
+# library, then runs the Test-stdlib suite.
 #
 # The suite is executed directly (test/runtests.jl resolves the Test
 # stdlib through the default `@stdlib` LOAD_PATH entry) rather than

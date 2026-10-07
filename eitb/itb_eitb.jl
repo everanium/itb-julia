@@ -1,11 +1,11 @@
-# eitb — command-line demonstrator for the ITB Julia binding.
+# Command-line demonstrator for the ITB Julia binding.
 #
 # Subcommands:
 #
-#   itb_eitb.jl version                                   library + binding versions
-#   itb_eitb.jl profiles                                  registered profile catalogue
-#   itb_eitb.jl inspect <blob-hex>                        profile record of a blob
-#   itb_eitb.jl encrypt <profile> <in-file> <out-file>    Single Message encrypt
+#   itb_eitb.jl version
+#   itb_eitb.jl profiles
+#   itb_eitb.jl inspect <blob-hex>
+#   itb_eitb.jl encrypt <profile> <in-file> <out-file>
 #   itb_eitb.jl decrypt <profile> <blob-hex> <in-file> <out-file>
 #
 # `encrypt` prints the session blob (`save`) to stderr as hex; feed
@@ -13,7 +13,8 @@
 # session with `load` (the profile argument only routes Single
 # Message versus streaming). `profiles` lists the registered profile
 # catalogue one name per line; the profiles that carry a cipher
-# surface are the ones `encrypt` / `decrypt` accept.
+# surface are the ones `encrypt` / `decrypt` accept. `inspect` prints
+# the profile record a blob carries.
 
 using LibItb3
 

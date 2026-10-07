@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
-# build.sh -- one-step build for the Julia binding's libitb3.so
-# dependency. Prerequisites (Go, Julia 1.10+) must be installed
-# separately; see README.md "Prerequisites" section.
+# One-step build for the Julia binding's libitb3.so dependency.
+# Prerequisites (Go, Julia 1.10+) must be installed separately; see
+# README.md "Prerequisites" section.
 #
 # Every artefact this binding owns is removed before the build, so
 # nothing in the tree predates the invocation. eitb/eitb runs its Julia
@@ -130,6 +130,25 @@ go build -trimpath "${TAGS[@]}" -buildmode=c-shared \
 cd "$REPO_ROOT/bindings/julia"
 echo "==> resolving + precompiling the ITB Julia package"
 julia --startup-file=no --project=. -e 'using Pkg; Pkg.instantiate(); Pkg.precompile()'
+
+# The loop stress harness is a set of script units with no compiled
+# output, so what the build can prove about it is that every unit
+# parses. A syntax error inside one would otherwise surface only when
+# the utility is run, which for a harness the release gate drives for
+# minutes at a time is the wrong place to find out.
+# A parse failure is reported inside the returned expression rather
+# than raised, so the error nodes are what the check has to look for;
+# the parse call alone returns normally on a broken source.
+echo "==> parse-checking the loop stress harness sources"
+julia --startup-file=no --project=. -e '
+for path in sort(filter(f -> endswith(f, ".jl"), readdir("loop"; join=true)))
+    parsed = Meta.parseall(read(path, String); filename=path)
+    for node in parsed.args
+        if node isa Expr && (node.head === :error || node.head === :incomplete)
+            error("$(path): $(node)")
+        end
+    end
+end'
 
 echo "==> Julia binding loads libitb3.so at runtime via Libdl; no further build step."
 echo "==> ready: ./run_tests.sh"

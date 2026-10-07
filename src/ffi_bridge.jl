@@ -78,6 +78,9 @@ end
 _ITB_Version(buf, cap, need) =
     ccall(_sym(:ITB_Version), Cint, (Ptr{UInt8}, Csize_t, Ptr{Csize_t}), buf, cap, need)
 
+_ITB_DRBGAutoTier(buf, cap, need) =
+    ccall(_sym(:ITB_DRBGAutoTier), Cint, (Ptr{UInt8}, Csize_t, Ptr{Csize_t}), buf, cap, need)
+
 _ITB_LastError(buf, cap, need) =
     ccall(_sym(:ITB_LastError), Cint, (Ptr{UInt8}, Csize_t, Ptr{Csize_t}), buf, cap, need)
 
@@ -226,3 +229,28 @@ function check(rc::Integer)
     Int(rc) == STATUS_OK && return nothing
     throw(ITBError(Int(rc), last_error()))
 end
+
+# --- runtime observation -------------------------------------------------
+
+# Later additions to the runtime family, resolved the same way as the
+# entries above. The pool-counter vector crosses as an `Int64` array
+# whose element count the library reports through its own length query,
+# so no slot layout is assumed on this side.
+
+_ITB_SetGOMAXPROCS(n) =
+    ccall(_sym(:ITB_SetGOMAXPROCS), Cint, (Cint,), n)
+
+_ITB_WriteHeapProfile(path) =
+    ccall(_sym(:ITB_WriteHeapProfile), Cint, (Cstring,), path)
+
+_ITB_PoolStatsLen() =
+    ccall(_sym(:ITB_PoolStatsLen), Cint, ())
+
+_ITB_PoolStats(out, cap_elems, len_elems) =
+    ccall(_sym(:ITB_PoolStats), Cint, (Ptr{Int64}, Csize_t, Ptr{Csize_t}),
+          out, cap_elems, len_elems)
+
+_ITB_Triple_HashNames(json_out, json_cap, json_len) =
+    ccall(_sym(:ITB_Triple_HashNames), Cint,
+          (Ptr{UInt8}, Csize_t, Ptr{Csize_t}),
+          json_out, json_cap, json_len)

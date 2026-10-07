@@ -172,14 +172,14 @@ function bench_stream()
     free!(pipe)
 end
 
-# Bench-scale allocation churn leaks Go scratch heap unboundedly
-# without a soft memory cap + aggressive GC; the return values report
-# the previous settings, not an error.
+# Bench-scale allocation churn grows the Go scratch heap
+# unboundedly without a soft memory cap + aggressive GC; the
+# return values report the previous settings, not an error.
 set_memory_limit(4 << 30)
 set_gc_percent(100)
 
 function bench_stream_one_shot()
-    # Whole-buffer stream: one FFI round trip through
+    # One-shot stream: one FFI round trip through
     # encrypt_stream_one_shot / decrypt_stream_one_shot per iteration.
     pipe = Pipeline(profile_name("ITB_STREAM_PROFILE", "streaming-noaead-triple-v1"); opts=build_opts())
     for size in SIZES

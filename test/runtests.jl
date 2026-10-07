@@ -36,6 +36,10 @@ end
         @test occursin(r"^\d+\.\d+", v)
     end
 
+    @testset "drbg auto tier" begin
+        @test drbg_auto_tier() in ("aes-256-ctr", "chacha20")
+    end
+
     @testset "profiles list" begin
         ps = profiles()
         @test "singlemsg-triple-mac-v1" in ps
@@ -369,5 +373,105 @@ end
     @testset "runtime knobs report previous values" begin
         @test set_memory_limit(-1) isa Int
         @test set_gc_percent(-1) isa Int
+    end
+
+    @testset "runtime observation handles" begin
+        # GOMAXPROCS: the setter reports the previous value, and the
+        # query form (n <= 0) leaves it where the set put it.
+        prev = set_gomaxprocs(2)
+        @test prev isa Int
+        @test set_gomaxprocs(0) == 2
+        set_gomaxprocs(prev)
+
+        # The pool-counter vector is sized from the library's own
+        # length query; slot 0 carries the hash-array tier count and
+        # the layout runs 1 + 5T + 8 slots.
+        n = pool_stats_len()
+        @test n > 0
+        stats = pool_stats()
+        @test length(stats) == n
+        tiers = Int(stats[1])
+        @test tiers >= 1
+        @test 1 + 5 * tiers + 8 == n
+        # Counters are monotone totals since library load, so a second
+        # snapshot never goes backwards.
+        again = pool_stats()
+        @test all(again .>= stats)
+
+        # The heap profile is a pprof payload a reader can open; the
+        # leading bytes are the gzip magic pprof wraps its protobuf in.
+        path = tempname()
+        try
+            write_heap_profile(path)
+            @test filesize(path) > 0
+            @test read(path, 2) == UInt8[0x1f, 0x8b]
+        finally
+            isfile(path) && rm(path)
+        end
+
+        # A path the library cannot open surfaces as a diagnostic
+        # rather than a silent success.
+        @test_throws ITBError write_heap_profile(joinpath(tempdir(), "no-such-dir", "heap.prof"))
+    end
+
+    @testset "hash registry enumeration" begin
+        names = hash_names()
+        @test !isempty(names)
+        @test "areion512" in names
+        @test "aesitb128" in names
+        @test !("definitely-not-a-primitive" in names)
+        # Every enumerated name is accepted by Init as an inner hash,
+        # which is what the enumeration is for.
+        p = Pipeline("singlemsg-triple-nomac-v1";
+                     opts=with_inner_hash!(Opts(), first(names)))
+        @test occursin("\"hash\":\"$(first(names))\"", inspect(save(p)))
+        free!(p)
+    end
+end
+
+@testset "DRBG fill primitive" begin
+    @testset "drbg round trip through a loaded blob" begin
+        for name in ("csprng", "aesitb128")
+            sender = Pipeline("singlemsg-triple-mac-v1";
+                              opts=with_drbg!(Opts(), name))
+            receiver = load(save(sender))
+            plain = Vector{UInt8}("drbg $name")
+            @test decrypt_message(receiver, encrypt_message(sender, plain)) == plain
+            back = Vector{UInt8}("reverse $name")
+            @test decrypt_message(sender, encrypt_message(receiver, back)) == back
+            free!(sender)
+            free!(receiver)
+        end
+    end
+
+    @testset "drbg inspect, default and unknown name" begin
+        pipe = Pipeline("singlemsg-triple-mac-v1";
+                        opts=with_drbg!(Opts(), "csprng"))
+        @test occursin("\"drbg\":\"csprng\"", inspect(save(pipe)))
+        free!(pipe)
+        # With no drbg set the record carries no drbg key, and no
+        # shipped profile names one.
+        plain = Pipeline("singlemsg-triple-mac-v1")
+        @test !occursin("\"drbg\":", inspect(save(plain)))
+        free!(plain)
+        @test !occursin("\"drbg\":", lookup("singlemsg-triple-mac-v1"))
+        err = capture_itberror(() -> Pipeline("singlemsg-triple-mac-v1";
+                                              opts=with_drbg!(Opts(), "nope")))
+        @test err.status_code == LibItb3.STATUS_RECIPE_PRIMITIVE_UNKNOWN
+        @test occursin("nope", err.last_error)
+    end
+
+    @testset "drbg survives a register copy" begin
+        pipe = Pipeline("singlemsg-triple-mac-v1";
+                        opts=with_drbg!(Opts(), "csprng"))
+        # The inspection-only fields are dropped; drbg is a recipe
+        # field and stays in the registered copy.
+        record = inspect(save(pipe))
+        record = replace(record, r"\"name\":\"[^\"]*\",?" => "")
+        record = replace(record,
+                         r"\"(nonce_bits|barrier_fill|container_mode)\":[0-9]+,?" => "")
+        register("julia-binding-test-drbg-copy", record)
+        @test occursin("\"drbg\":\"csprng\"", lookup("julia-binding-test-drbg-copy"))
+        free!(pipe)
     end
 end

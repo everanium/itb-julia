@@ -9,8 +9,8 @@ const _BLOB_CAP = 64 * 1024
 const _JSON_CAP = 4 * 1024
 
 # Pre-allocation formula for Message / one-shot stream outputs:
-# payload * 5/4 + 65536.
-_out_cap(payload::Int) = payload + payload ÷ 4 + 65_536
+# payload * 5/4 + 131072.
+_out_cap(payload::Int) = payload + payload ÷ 4 + 131_072
 
 """
     _retry_once(f, cap) -> Vector{UInt8}

@@ -26,41 +26,6 @@ const STATUS_TRIPLE_CLOSED = 25
 const STATUS_PROFILE_EXISTS = 26
 const STATUS_INTERNAL = 99
 
-const _STATUS_LABELS = Dict{Int,String}(
-    STATUS_OK => "ok",
-    STATUS_BAD_HASH => "unknown hash name",
-    STATUS_BAD_KEY_BITS => "invalid key bits",
-    STATUS_BAD_HANDLE => "invalid handle",
-    STATUS_BAD_INPUT => "invalid input",
-    STATUS_BUFFER_TOO_SMALL => "output buffer too small",
-    STATUS_ENCRYPT_FAILED => "encrypt failed",
-    STATUS_DECRYPT_FAILED => "decrypt failed",
-    STATUS_SEED_WIDTH_MIX => "seed width mismatch",
-    STATUS_BAD_MAC => "unknown MAC name or invalid MAC handle",
-    STATUS_MAC_FAILURE => "MAC verification failed",
-    STATUS_BLOB_MALFORMED_RECIPE => "blob profile record invalid",
-    STATUS_RECIPE_PRIMITIVE_UNKNOWN =>
-        "blob profile record names a primitive absent from the local registries",
-    STATUS_UNKNOWN_PROFILE => "unknown profile name",
-    STATUS_BLOB_MODE_MISMATCH => "blob mode mismatch",
-    STATUS_BLOB_MALFORMED => "malformed state blob",
-    STATUS_BLOB_VERSION_TOO_NEW => "blob version too new",
-    STATUS_BLOB_TOO_MANY_OPTS => "too many blob export opts",
-    STATUS_STREAM_TRUNCATED => "stream truncated before terminator",
-    STATUS_STREAM_AFTER_FINAL => "stream chunk after terminator",
-    STATUS_TRIPLE_CLOSED => "Triple Pipeline is closed",
-    STATUS_PROFILE_EXISTS => "profile name already registered",
-    STATUS_INTERNAL => "internal error",
-)
-
-"""
-    status_label(code::Integer) -> String
-
-Short human-readable label for a libitb3 status code; unknown codes
-collapse to `"unknown status"`.
-"""
-status_label(code::Integer) = get(_STATUS_LABELS, Int(code), "unknown status")
-
 """
     ITBError <: Exception
 
@@ -85,10 +50,7 @@ ITBError(message::AbstractString) = ITBError(-1, String(message))
 function Base.showerror(io::IO, e::ITBError)
     if e.status_code < 0
         print(io, "itb: ", e.last_error)
-    elseif isempty(e.last_error)
-        print(io, "itb: status=", e.status_code, " (", status_label(e.status_code), ")")
     else
-        print(io, "itb: status=", e.status_code, " (", status_label(e.status_code),
-              "): ", e.last_error)
+        print(io, "itb: status=", e.status_code, ": ", e.last_error)
     end
 end

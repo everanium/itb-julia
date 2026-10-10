@@ -1,6 +1,6 @@
 name = "LibItb3"
 uuid = "f186ed08-a8a6-4304-bb80-ea7cbba0a5e7"
-version = "0.5.1"
+version = "0.5.5"
 authors = ["Andrey Kuvshinov <andrew@encloud.blue>"]
 
 [deps]

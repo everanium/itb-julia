@@ -42,7 +42,7 @@ export ITBError, Opts, Pipeline, StreamEncryptor, StreamDecryptor,
     with_outer_cipher!, with_drbg!, with_parallax_palette!, build
 
 "The binding's own version (the library version is [`version`](@ref))."
-const BINDING_VERSION = v"0.5.1"
+const BINDING_VERSION = v"0.5.5"
 
 include("errors.jl")
 include("ffi_bridge.jl")

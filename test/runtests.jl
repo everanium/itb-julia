@@ -317,11 +317,20 @@ end
         @test occursin("\"mode\":\"singlemsg-mac\"", record)
         @test occursin("\"nonce_bits\":", record)
         @test occursin("\"barrier_fill\":", record)
+        @test occursin("\"container_mode\":1", record)
         @test occursin("\"name\":\"singlemsg-triple-mac-v1\"", looked)
         @test !occursin("\"nonce_bits\":", looked)
         @test !occursin("\"barrier_fill\":", looked)
+        @test !occursin("\"container_mode\":", looked)
         err = capture_itberror(() -> inspect(Vector{UInt8}("not a blob")))
         @test err.status_code == LibItb3.STATUS_BAD_INPUT
+        free!(pipe)
+    end
+
+    @testset "inspect carries container_mode override" begin
+        pipe = Pipeline("singlemsg-triple-mac-v1"; opts=with_mode!(Opts(), 2))
+        record = inspect(save(pipe))
+        @test occursin("\"container_mode\":2", record)
         free!(pipe)
     end
 

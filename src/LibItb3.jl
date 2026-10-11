@@ -35,14 +35,14 @@ export ITBError, Opts, Pipeline, StreamEncryptor, StreamDecryptor,
     encrypt_stream_one_shot, decrypt_stream_one_shot,
     encrypt_stream, decrypt_stream,
     write!, end_stream!, read!, read_into!, drain_all!, pump!,
-    with_raw!, with_perm_master!, with_wrap_master!, with_parallax!,
+    with_mode!, with_raw!, with_perm_master!, with_wrap_master!, with_parallax!,
     with_wrapper!, with_max_workers!, with_nonce_bits!, with_barrier_fill!,
     with_chunk_size!, with_key_bits!, with_parallax_segment_size!,
     with_mac_name!, with_inner_hash!, with_inner_hashes!,
     with_outer_cipher!, with_drbg!, with_parallax_palette!, build
 
 "The binding's own version (the library version is [`version`](@ref))."
-const BINDING_VERSION = v"0.5.5"
+const BINDING_VERSION = v"0.5.6"
 
 include("errors.jl")
 include("ffi_bridge.jl")

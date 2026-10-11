@@ -88,6 +88,7 @@ with no opts of its own:
 
 ```julia
 opts = Opts()
+with_mode!(opts, 2)
 with_chunk_size!(opts, 65536)
 with_wrapper!(opts, false)
 sender = Pipeline("singlemsg-triple-mac-v1"; opts=opts)

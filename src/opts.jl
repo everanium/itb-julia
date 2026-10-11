@@ -32,6 +32,9 @@ function with_raw!(o::Opts, key::AbstractString, value::AbstractString)
     return o
 end
 
+"Container floor sizing mode (1 per-region, 2 per-container)."
+with_mode!(o::Opts, n::Integer) = with_raw!(o, "mode", string(n))
+
 "Hex-encodes the parallax master override (`pm`)."
 with_perm_master!(o::Opts, master::AbstractVector{UInt8}) =
     with_raw!(o, "pm", bytes2hex(master))

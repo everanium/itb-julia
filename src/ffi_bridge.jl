@@ -97,6 +97,11 @@ _ITB_Triple_Init(profile, opts, blob_out, blob_cap, blob_len, out_handle) =
           (Cstring, Cstring, Ptr{UInt8}, Csize_t, Ptr{Csize_t}, Ptr{Csize_t}),
           profile, opts, blob_out, blob_cap, blob_len, out_handle)
 
+_ITB_Triple_InitKeys(profile, opts, masters_flat, masters_flat_len, master_lens, masters_count, blob_out, blob_cap, blob_len, out_handle) =
+    ccall(_sym(:ITB_Triple_InitKeys), Cint,
+          (Cstring, Cstring, Ptr{UInt8}, Csize_t, Ptr{Csize_t}, Csize_t, Ptr{UInt8}, Csize_t, Ptr{Csize_t}, Ptr{Csize_t}),
+          profile, opts, masters_flat, masters_flat_len, master_lens, masters_count, blob_out, blob_cap, blob_len, out_handle)
+
 _ITB_Triple_Load(blob, blob_len, pm, pm_len, wm, wm_len, count, out_handle) =
     ccall(_sym(:ITB_Triple_Load), Cint,
           (Ptr{UInt8}, Csize_t, Ptr{UInt8}, Csize_t,

@@ -236,6 +236,30 @@ end
         free!(receiver)
     end
 
+    @testset "init_keys determinism and BAD_INPUT errors" begin
+        opts = Opts()
+        with_parallax!(opts, false)
+        with_wrapper!(opts, false)
+        masters = [fill(UInt8(0x11 * i), 32) for i in 1:8]
+        p1 = init_keys("singlemsg-triple-mac-v1", masters; opts=opts)
+        p2 = Pipeline("singlemsg-triple-mac-v1", masters; opts=opts)
+        @test save(p1) == save(p2)
+        wire = encrypt_message(p1, Vector{UInt8}("deterministic keys"))
+        @test decrypt_message(p2, wire) == Vector{UInt8}("deterministic keys")
+        free!(p1)
+        free!(p2)
+
+        dup = copy(masters)
+        dup[8] = dup[1]
+        err = capture_itberror(() -> init_keys("singlemsg-triple-mac-v1", dup; opts=opts))
+        @test err.status_code == LibItb3.STATUS_BAD_INPUT
+
+        short = copy(masters)
+        short[1] = fill(0xaa, 8)
+        err2 = capture_itberror(() -> init_keys("singlemsg-triple-mac-v1", short; opts=opts))
+        @test err2.status_code == LibItb3.STATUS_BAD_INPUT
+    end
+
     @testset "register and duplicate" begin
         name = "julia-binding-test-$(getpid())"
         profile = """{

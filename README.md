@@ -12,7 +12,7 @@ C compiler at install time, no compile-time link; the `.so` /
 `.dylib` / `.dll` is resolved at the first FFI call. Every hash-name
 / MAC-name / cipher-name / profile-name is an opaque string passed
 through to Go for validation; the binding carries no ITB construction
-logic. The public surface is the `LibItb3` module (`load` / `load_f` /
+logic. The public surface is the `LibItb3` module (`init_keys` / `load` / `load_f` /
 `save` / `save_f` / `inspect` / `register` / `lookup` / `profiles` /
 `version` / `drbg_auto_tier` and the Go runtime knobs), the `Pipeline` type
 (Single Message encrypt / decrypt, one-shot and incremental stream
@@ -94,6 +94,8 @@ with_wrapper!(opts, false)
 sender = Pipeline("singlemsg-triple-mac-v1"; opts=opts)
 receiver = load(save(sender))
 ```
+
+`init_keys(profile, masters; opts=nothing)` (or `Pipeline(profile, masters; opts=nothing)`) constructs a session from caller-supplied master keys (`8` keys when neither Parallax nor the Wrapper is active, `9` when one is, `10` when both are, each 16–64 bytes and pairwise distinct) instead of drawing from the library CSPRNG.
 
 `rekey!` rotates the parallax + wrapper masters mid-session (the
 eight ITB seeds and MAC key are fixed for the session lifetime by

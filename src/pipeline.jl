@@ -85,6 +85,45 @@ function Pipeline(profile::AbstractString; opts=nothing)
 end
 
 """
+    init_keys(profile, masters; opts=nothing) -> Pipeline
+
+Constructs a Pipeline against the named profile from caller-supplied
+master keys (`ITB_Triple_InitKeys`).
+"""
+function init_keys(profile::AbstractString, masters::AbstractVector{<:AbstractVector{UInt8}}; opts=nothing)::Pipeline
+    opts_s = render_opts(opts)
+    count = length(masters)
+    lens = Csize_t[length(m) for m in masters]
+    total_len = Int(sum(lens; init=Csize_t(0)))
+    flat = Vector{UInt8}(undef, total_len)
+    try
+        off = 1
+        for m in masters
+            n = length(m)
+            if n > 0
+                copyto!(flat, off, m, 1, n)
+                off += n
+            end
+        end
+        href = Ref{Csize_t}(0)
+        _retry_once(_BLOB_CAP) do buf, need
+            _ITB_Triple_InitKeys(
+                profile, opts_s,
+                total_len > 0 ? flat : C_NULL, total_len,
+                count > 0 ? lens : C_NULL, count,
+                buf, length(buf), need, href
+            )
+        end
+        return Pipeline(href[])
+    finally
+        fill!(flat, 0x00)
+    end
+end
+
+Pipeline(profile::AbstractString, masters::AbstractVector{<:AbstractVector{UInt8}}; opts=nothing) =
+    init_keys(profile, masters; opts=opts)
+
+"""
     load(blob; masters=nothing) -> Pipeline
 
 Reconstructs a Pipeline from a blob produced by [`save`](@ref) or

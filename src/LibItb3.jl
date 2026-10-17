@@ -28,7 +28,7 @@ import Base: read!
 
 export ITBError, Opts, Pipeline, StreamEncryptor, StreamDecryptor,
     profiles, version, drbg_auto_tier,
-    load, load_f, save, save_f, inspect, register, lookup,
+    init_keys, load, load_f, save, save_f, inspect, register, lookup,
     set_memory_limit, set_gc_percent,
     rekey!, max_workers!, close!, free!,
     encrypt_message, decrypt_message,
@@ -42,7 +42,7 @@ export ITBError, Opts, Pipeline, StreamEncryptor, StreamDecryptor,
     with_outer_cipher!, with_drbg!, with_parallax_palette!, build
 
 "The binding's own version (the library version is [`version`](@ref))."
-const BINDING_VERSION = v"0.7.2"
+const BINDING_VERSION = v"0.7.3"
 
 include("errors.jl")
 include("ffi_bridge.jl")

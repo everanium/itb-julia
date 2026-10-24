@@ -78,9 +78,10 @@ function Pipeline(profile::AbstractString; opts=nothing)
     # session (the undersized attempt is closed by libitb3 before
     # returning). The Init-time blob copy is dropped; `save` re-reads
     # it from the handle.
-    _retry_once(_BLOB_CAP) do buf, need
+    blob = _retry_once(_BLOB_CAP) do buf, need
         _ITB_Triple_Init(profile, opts_s, buf, length(buf), need, href)
     end
+    fill!(blob, 0x00)
     return Pipeline(href[])
 end
 
@@ -106,7 +107,7 @@ function init_keys(profile::AbstractString, masters::AbstractVector{<:AbstractVe
             end
         end
         href = Ref{Csize_t}(0)
-        _retry_once(_BLOB_CAP) do buf, need
+        blob = _retry_once(_BLOB_CAP) do buf, need
             _ITB_Triple_InitKeys(
                 profile, opts_s,
                 total_len > 0 ? flat : C_NULL, total_len,
@@ -114,6 +115,7 @@ function init_keys(profile::AbstractString, masters::AbstractVector{<:AbstractVe
                 buf, length(buf), need, href
             )
         end
+        fill!(blob, 0x00)
         return Pipeline(href[])
     finally
         fill!(flat, 0x00)

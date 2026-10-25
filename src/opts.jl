@@ -35,6 +35,9 @@ end
 "Container floor sizing mode (1 per-region, 2 per-container)."
 with_mode!(o::Opts, n::Integer) = with_raw!(o, "mode", string(n))
 
+"Interlocked Barrier chunk width (`\"48\"` or `\"168\"`, `\"\"` = default 48-bit)."
+with_interlock!(o::Opts, width::AbstractString) = with_raw!(o, "interlock", width)
+
 "Hex-encodes the parallax master override (`pm`)."
 with_perm_master!(o::Opts, master::AbstractVector{UInt8}) =
     with_raw!(o, "pm", bytes2hex(master))

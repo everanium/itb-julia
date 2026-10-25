@@ -508,3 +508,32 @@ end
         free!(pipe)
     end
 end
+
+@testset "Interlocked Barrier chunk width" begin
+    @testset "interlock 168 round trip, inspect, and bad input" begin
+        sender = Pipeline("singlemsg-triple-mac-v1";
+                          opts=with_interlock!(Opts(), "168"))
+        plain = Vector{UInt8}("interlock 168")
+        wire = encrypt_message(sender, plain)
+        @test decrypt_message(sender, wire) == plain
+
+        blob = save(sender)
+        record = inspect(blob)
+        @test occursin("\"interlock\":\"168\"", record)
+
+        receiver = load(blob)
+        @test decrypt_message(receiver, wire) == plain
+        free!(sender)
+        free!(receiver)
+
+        bad_opts = Opts()
+        with_inner_hash!(bad_opts, "blake3")
+        with_interlock!(bad_opts, "168")
+        err = capture_itberror(() -> Pipeline("singlemsg-triple-mac-v1"; opts=bad_opts))
+        @test err.status_code == LibItb3.STATUS_BAD_INPUT
+
+        err2 = capture_itberror(() -> Pipeline("singlemsg-triple-mac-v1";
+                                               opts=with_interlock!(Opts(), "96")))
+        @test err2.status_code == LibItb3.STATUS_BAD_INPUT
+    end
+end

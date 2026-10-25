@@ -82,6 +82,7 @@ free!(receiver)
 
 `Opts` overrides the profile default at construction (chunk size,
 outer cipher, parallax on/off, wrapper on/off, MAC name, palette,
+`interlock` (`"48"` | `"168"`, `""` = default 48-bit; `"168"` requires a 512-bit hash),
 worker cap); the `with_*!` setters mutate the builder in place. The
 resolved shape is written into the blob, so the receiver loads it
 with no opts of its own:
@@ -89,6 +90,7 @@ with no opts of its own:
 ```julia
 opts = Opts()
 with_mode!(opts, 2)
+with_interlock!(opts, "168")
 with_chunk_size!(opts, 65536)
 with_wrapper!(opts, false)
 sender = Pipeline("singlemsg-triple-mac-v1"; opts=opts)

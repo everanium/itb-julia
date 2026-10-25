@@ -267,6 +267,7 @@ function emit_json(r::RunState, elapsed_ns::Int, total_iters::Int, total_enc::In
     print(out, ",\"blob_mode\":", cfg.blob_mode)
     print(out, ",\"drbg\":", json_string(cfg.drbg))
     print(out, ",\"drbg_auto_tier\":", json_string(ITB.drbg_auto_tier()))
+    print(out, ",\"interlock\":", json_string(cfg.interlock))
     print(out, ",\"chunk_size_bytes\":", cfg.chunk_size)
     print(out, ",\"barrier_fill\":", cfg.barrier_fill)
     print(out, ",\"parallax\":\"", on_off(cfg.parallax), "\"")

@@ -65,6 +65,7 @@ mutable struct Config
     chunk_size::Int         # 0 = profile default
     barrier_fill::Int       # 0 = profile default
     drbg::String            # DRBG fill primitive; "" = profile default (auto tier)
+    interlock::String       # Interlocked Barrier chunk width: "48" | "168"; "" = profile default
     gomaxprocs::Int         # 0 = inherit from the environment
     rekey_every::Int        # per-worker iterations between rotations; 0 = never
     blob_cycle_every::Int   # per-worker iterations between reopens; 0 = never
@@ -75,7 +76,7 @@ mutable struct Config
 end
 
 Config() = Config(0, 0, 0, 0, SHAPE_STREAM, "", "", 0, 0, false, 0, true, true,
-                  "", 0, 0, 1, 0, 0, "", 0, 0, 0, 1, UInt64(0), false, "")
+                  "", 0, 0, 1, 0, 0, "", "", 0, 0, 0, 1, UInt64(0), false, "")
 
 """
 A reader-preferring read-write lock.

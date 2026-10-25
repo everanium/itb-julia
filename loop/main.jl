@@ -93,6 +93,8 @@ const FLAGS = (
      "concurrent workers (1..10); on runtimes without parallelism values above 1 are clamped to 1"),
     ("hash", "string", KIND_STRING, "areion512",
      "inner ITB hash primitive name"),
+    ("interlock", "string", KIND_STRING, "",
+     "Interlocked Barrier chunk width: 48 | 168; empty = profile default (48; 168 requires 512-bit hash)"),
     ("iterations", "int", KIND_INT64, 0,
      "fixed per-worker iteration count; 0 = duration-based"),
     ("json-output", "", KIND_BOOL, false,
@@ -473,6 +475,11 @@ function parse_flags(argv::Vector{String})
     end
     # Validated by Init: the C ABI enumerates no DRBG names.
     cfg.drbg = string(raw["drbg"])
+    cfg.interlock = string(raw["interlock"])
+    if !(cfg.interlock in ("", "48", "168"))
+        err_line("--interlock must be 48 | 168 (or empty = profile default), got \"$(cfg.interlock)\"")
+        return -1, cfg
+    end
     chunk_size = parse_size(string(raw["chunk-size"]))
     if chunk_size === nothing
         err_line("--chunk-size: invalid size \"$(raw["chunk-size"])\"")
@@ -619,6 +626,10 @@ function log_pipeline_initialised(profile::AbstractString, blob::Vector{UInt8})
     if drbg != "-"
         line *= " drbg=$drbg"
     end
+    interlock = record_str(json, "interlock")
+    if interlock != "-"
+        line *= " interlock=$interlock"
+    end
     log_line(line)
     return nothing
 end
@@ -643,6 +654,7 @@ function build_pipeline(cfg::Config, profile::AbstractString)
     ITB.with_nonce_bits!(opts, cfg.nonce_bits)
     ITB.with_barrier_fill!(opts, cfg.barrier_fill)
     ITB.with_drbg!(opts, cfg.drbg)
+    ITB.with_interlock!(opts, cfg.interlock)
     ITB.with_chunk_size!(opts, cfg.chunk_size)
     if !isempty(cfg.profile)
         filled = fill_keystream_layers(cfg.profile, opts, cfg.parallax, cfg.wrapper)
@@ -720,7 +732,8 @@ function run_loop(argv::Vector{String})
              "payload-mode=$(payload_mode_name(cfg.payload_mode)) seed=$(cfg.seed) " *
              "json-output=$(cfg.json_output ? "true" : "false")" *
              (cfg.blob_mode != 1 ? " blob-mode=$(cfg.blob_mode)" : "") *
-             (isempty(cfg.drbg) ? "" : " drbg=$(cfg.drbg)"))
+             (isempty(cfg.drbg) ? "" : " drbg=$(cfg.drbg)") *
+             (isempty(cfg.interlock) ? "" : " interlock=$(cfg.interlock)"))
     log_line("policy: microbatch-tiers=$(policy_label("ITB_MICROBATCH_TIERS")) " *
              "hashpool-starters=$(policy_label("ITB_HASHPOOL_STARTERS"))")
 

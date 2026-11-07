@@ -78,7 +78,7 @@ const FLAGS = (
     ("blob-cycle-every", "int", KIND_INT64, 0,
      "reopen each pipeline from its session blob every N iterations per worker; 0 = never"),
     ("blob-mode", "int", KIND_INT, 1,
-     "container floor sizing mode: 1 (per-region, default) | 2 (per-container)"),
+     "container floor sizing mode: 1 (per-region, default) | 2 (per-container) | 3 (gauss-posit)"),
     ("chunk-size", "string", KIND_STRING, "0",
      "streaming chunk-size budget (e.g. 4MB); 0 = profile default; inert for pure message shape"),
     ("drbg", "string", KIND_STRING, "",
@@ -464,8 +464,8 @@ function parse_flags(argv::Vector{String})
         return -1, cfg
     end
     cfg.blob_mode = Int(raw["blob-mode"])
-    if !(cfg.blob_mode in (1, 2))
-        err_line("--blob-mode must be 1 (per-region) | 2 (per-container), got $(cfg.blob_mode)")
+    if !(cfg.blob_mode in (1, 2, 3))
+        err_line("--blob-mode must be 1 (per-region) | 2 (per-container) | 3 (gauss-posit), got $(cfg.blob_mode)")
         return -1, cfg
     end
     cfg.barrier_fill = Int(raw["barrier-fill"])
@@ -619,7 +619,7 @@ function log_pipeline_initialised(profile::AbstractString, blob::Vector{UInt8})
            "parallax=$(on_off(record_bool(json, "parallax"))) " *
            "wrapper=$(on_off(record_bool(json, "wrapper")))"
     container_mode = record_int(json, "container_mode")
-    if container_mode == 2
+    if container_mode == 2 || container_mode == 3
         line *= " container-mode=$container_mode"
     end
     drbg = record_str(json, "drbg")

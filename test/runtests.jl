@@ -356,6 +356,10 @@ end
         record = inspect(save(pipe))
         @test occursin("\"container_mode\":2", record)
         free!(pipe)
+        pipe3 = Pipeline("singlemsg-triple-mac-v1"; opts=with_mode!(Opts(), 3))
+        record3 = inspect(save(pipe3))
+        @test occursin("\"container_mode\":3", record3)
+        free!(pipe3)
     end
 
     @testset "max_workers!" begin
